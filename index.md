@@ -1,4 +1,4 @@
-# How I created news sentiment classifiers using Python and how you can too
+# How I created a sentiment classification model on news data using Python and how you can too
 
 ![image of newspapers on a stand](markus-spiske-2G8mnFvH8xk-unsplash.jpg) 
 <br />
@@ -16,10 +16,17 @@ Check out my [personal website](https://www.alolelba.com/) for more projects.
 * Data 
 {:toc}
 
-## Data 
+## Background and Data 
+The purpose of this project was to perform supervised binary sentiment classification on labelled financial news headlines, where a news headline is either positive or negative.
+
+The data is obtained from Kaggle. It can be downloaded [here](https://www.kaggle.com/datasets/ankurzing/sentiment-analysis-for-financial-news).
+
+Below, I go through my code step-by-step and in detail so if you're TLDR type of person and just want the code, I'll only be a little butt hurt - visit my github [here](https://github.com/aelb66/News-Sentiment-Classifier).
+
+*hawt tip:* If you're not sure what a specific line/chunk of code does, copy and paste it into [Bing Chat](https://www.microsoft.com/en-us/edge/features/bing-chat?form=MT00D8) and ask it to explain it to you.
 
 ## 1. Libraries 
-I used the following libraries for this project. 
+I used the following libraries for this project.
 ```r
 # Data pre-processing
 import numpy as np
@@ -47,22 +54,78 @@ import torch
 from sklearn.metrics import f1_score, precision_score, recall_score, classification_report, balanced_accuracy_score,log_loss
 ```
 
-## 2. Pre-processing
+## 2. Exploratory Data Analysis (EDA)
+Above all else, the first thing you should do with data is look at what you're working with. 
 
-### 2.1 Extracting data
+Below, I first resized the output display so that you can see the full text of each headline clearly.
+I then created a function that imported the data, performed basic cleaning/filtering and returned the cleaned data as a Pandas DataFrame. The original file has 3 classes: positive, negative and neutral. I removed the neutral class out of preference.
 
+```r
+#resizing output display
+pd.set_option('max_colwidth', None)
+
+def import_clean_df(path:str):
+    ''' 
+    Takes a path to the original data, reads data as Pandas (pd) DataFrame (df) and does initial cleaning:
+    (names columns, drops duplicate and blank rows, resets index) and returns the df
+
+    Args:
+        path(str): path to raw data
+    Returns:
+        dataframe(df): cleaned pd df
+    ''' 
+    #reading in data and naming columns to class and text
+    raw = pd.read_csv(path,skipinitialspace=True, skip_blank_lines=True,encoding = "ISO-8859-1", names=["class","text"]) 
+    #subset data to only positive and negative classes
+    raw_pn = raw[raw["class"].isin(["positive","negative"])]
+    #drop blank rows
+    raw_pn = raw_pn.dropna()
+    #drop duplicate rows
+    raw_pn = raw_pn.drop_duplicates()
+    #reset index
+    raw_pn = raw_pn.reset_index(drop=True)
+    return raw_pn
+
+#path to data
+filepath = "all-data.csv"
+
+data = import_clean_df(filepath)
+
+#preview of data
+data
+```
+This is what the data looks like so far. As expected it's quite messy e.g., (spaced-out commas and percentages, whole words that are either capitalised, lowercase or a mix), so further cleaning might be required.
+
+<img width="780" alt="image" src="https://github.com/aelb66/News-Sentiment-Classifier/assets/75398560/f5fef834-a1f5-42d3-8c08-cb291e99853a">
+
+Checking out the frequency and average word counts between classes.
+```r
+#class frequency
+print("Class Frequency:\n",data["class"].value_counts())
+#word count per class
+data["word_count"] = data["text"].map(lambda x: len(x.split()))
+print("\nAverage word count per class:\n",data.groupby("class")["word_count"].mean())
+#delete created column after use
+del data["word_count"]
+```
+<img width="245" alt="image" src="https://github.com/aelb66/News-Sentiment-Classifier/assets/75398560/7df22228-410c-486b-887a-0b1293844bd9">
 
 ### Initial Observations and Actions
 #### Observations:
-- Classes are moderately imbalanced ~(70:30) which can lead to model bias toward positive class (majority) during training and inference.
+- Looking at the frequencies, the classes are moderately imbalanced ~(70:30) which can lead to model bias toward the positive class (majority) during training and inference.
 - Data is on the smaller side for train/test/validation split.
 #### Actions:
-- As data is unbalanced, I'll split data proportionally into train/test using stratified k fold cv.
-- To increase the negative sentiment class and to make the dataset more balanced, I will perform data augmentation via word embeddings as it is shown effective in literature [1].
+- As data is unbalanced, I'll split data proportionally into train/test using stratified k-fold cross-validation.
+- To increase the negative sentiment class and to make the dataset more balanced, I will perform data augmentation via word embeddings as shown effective in literature [1].
 - For model selection, I will experiment with the following models:
-  - Binary Logistic Regression: baseline ML model\n",
-  - Random Forest: better at handling imbalanced data\n",
-  - DistilRoberta: small, faster version of RoBERTa, a well known pre-trained transformer model - using the dataset to fine-tune the model
+  - Binary Logistic Regression: baseline ML model
+  - Random Forest: better at handling imbalanced data
+  - DistilRoberta: small, faster version of RoBERTa, a well-known pre-trained transformer model - using the dataset to fine-tune the model
+
+## 3. Split the Data
+You can do this step within the sklearn pipeline ([example](https://stackoverflow.com/questions/67956414/from-train-test-split-to-cross-validation-in-sklearn-using-pipeline)), but I chose to do it outside so each model I'm comparing uses the same dataset. Regardless of what you decide, you must have your train and test sets separate to avoid [data leakage](https://en.wikipedia.org/wiki/Leakage_(machine_learning)).
+
+As mentioned, since my data is imbalanced I'll split the data proportionally so that my test and train data have the same proportions of negative and positive classes.
 
 
 ## CODE
